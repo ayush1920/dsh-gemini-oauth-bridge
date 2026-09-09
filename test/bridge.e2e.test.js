@@ -3,7 +3,7 @@
 // apiConfig pre-seeded into the isolated HOME's state file.
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import http from 'node:http';
@@ -265,13 +265,24 @@ test('refresh-models syncs llm-pi-ai.providers.gemini-oauth into settings.yaml',
 
   const settingsPath = join(fakeHome, '.dsh', 'settings.yaml');
   const text = readFileSync(settingsPath, 'utf8');
-  assert.match(text, new RegExp('llm-pi-ai:\\n  providers:\\n    gemini-oauth:\\n      api: openai-completions\\n      baseURL: http://127\\.0\\.0\\.1:' + port + '/gemini-oauth-bridge/v1\\n      models:\\n        - id: gemini-3\\.1-pro-high\\n        - id: claude-opus-4-6-thinking\\n$'));
+  assert.match(text, new RegExp('llm-pi-ai:\\n  providers:\\n    gemini-oauth:\\n      api: openai-completions\\n      baseURL: http://127\\.0\\.0\\.1:' + port + '/gemini-oauth-bridge/v1\\n      apiKeyEnv: GEMINI_OAUTH_API_KEY\\n      models:\\n        - id: gemini-3\\.1-pro-high\\n        - id: claude-opus-4-6-thinking\\n$'));
   assert.ok(!text.includes('chat_20706'));
   assert.ok(!text.includes('tab_flash_lite_preview'));
 
-  // second sync is byte-identical (idempotent)
+  // DSH refuses a provider with no credential: the fixed placeholder key must
+  // land in .credentials.yaml, 0600 (the loader rejects a looser mode).
+  assert.equal(body.provider.apiKeyEnv, 'GEMINI_OAUTH_API_KEY');
+  assert.deepEqual(body.provider.credential, { ok: true, created: true });
+  const credPath = join(fakeHome, '.dsh', '.credentials.yaml');
+  assert.equal(readFileSync(credPath, 'utf8'), 'version: 1\nrefs:\n  GEMINI_OAUTH_API_KEY: dsh-gemini-oauth-bridge\n');
+  assert.equal(statSync(credPath).mode & 0o777, 0o600);
+
+  // second sync is byte-identical (idempotent) for both documents
   const before = text;
+  const credBefore = readFileSync(credPath, 'utf8');
   const res2 = await fetch(`http://127.0.0.1:${port}/gemini-oauth-bridge/api/refresh-models`, { method: 'POST' });
   assert.equal(res2.status, 200);
+  assert.equal((await res2.json()).provider.credential.created, false);
   assert.equal(readFileSync(settingsPath, 'utf8'), before);
+  assert.equal(readFileSync(credPath, 'utf8'), credBefore);
 });

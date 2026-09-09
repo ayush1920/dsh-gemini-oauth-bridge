@@ -536,7 +536,7 @@ test('mergeProviderYaml inserts the provider without touching sibling providers'
   const r = mergeProviderYaml(before, 'gemini-oauth', BODY6);
   assert.ok(r.ok);
   const out = r.text.split('\n');
-  assert.match(r.text, /    gemini-oauth:\n      api: openai-completions\n      baseURL: http:\/\/127\.0\.0\.1:3080\/gemini-oauth-bridge\/v1\n      models:\n        - id: gemini-3\.1-pro-high\n        - id: claude-opus-4-6-thinking\n/);
+  assert.match(r.text, /    gemini-oauth:\n      api: openai-completions\n      baseURL: http:\/\/127\.0\.0\.1:3080\/gemini-oauth-bridge\/v1\n      apiKeyEnv: GEMINI_OAUTH_API_KEY\n      models:\n        - id: gemini-3\.1-pro-high\n        - id: claude-opus-4-6-thinking\n/);
   // siblings preserved verbatim and in order
   const kimi = out.indexOf('    kimi-coding:');
   const zai = out.indexOf('    zai-coding-cn:');
@@ -581,4 +581,75 @@ test('mergeProviderYaml creates providers under an existing llm-pi-ai and refuse
 
   const inline = 'llm-pi-ai: {}\n';
   assert.equal(mergeProviderYaml(inline, 'gemini-oauth', BODY6).ok, false);
+});
+
+// ---------- .credentials.yaml placeholder key ----------
+
+import { mergeCredentialYaml, PROVIDER_API_KEY_ENV, PROVIDER_PLACEHOLDER_KEY } from '../lib/protocol.js';
+
+test('buildProviderYamlLines always declares the credential reference', () => {
+  const lines = buildProviderYamlLines('127.0.0.1:3080', ['m'], 2);
+  assert.deepEqual(lines, ['  api: openai-completions', '  baseURL: http://127.0.0.1:3080/gemini-oauth-bridge/v1', '  apiKeyEnv: GEMINI_OAUTH_API_KEY', '  models:', '    - id: m']);
+});
+
+test('mergeCredentialYaml creates a version-1 document from nothing', () => {
+  for (const empty of ['', '   \n', '# only a comment\n']) {
+    const r = mergeCredentialYaml(empty, PROVIDER_API_KEY_ENV, PROVIDER_PLACEHOLDER_KEY);
+    assert.ok(r.ok);
+    assert.equal(r.created, true);
+    assert.equal(r.text, `version: 1\nrefs:\n  ${PROVIDER_API_KEY_ENV}: ${PROVIDER_PLACEHOLDER_KEY}\n`);
+  }
+});
+
+test('mergeCredentialYaml inserts under refs and preserves records, comments and order', () => {
+  const before = [
+    'version: 1',
+    'refs:',
+    '  # existing keys stay untouched',
+    '  DEEPSEEK_API_KEY: sk-abc',
+    '  KIMI_CODING_API_KEY: sk-kimi',
+    'records:',
+    '  client-connection/browser-session:',
+    '    kind: secret',
+    '',
+  ].join('\n');
+  const r = mergeCredentialYaml(before, PROVIDER_API_KEY_ENV, PROVIDER_PLACEHOLDER_KEY);
+  assert.ok(r.ok);
+  assert.equal(r.created, true);
+  assert.equal(
+    r.text,
+    [
+      'version: 1',
+      'refs:',
+      `  ${PROVIDER_API_KEY_ENV}: ${PROVIDER_PLACEHOLDER_KEY}`,
+      '  # existing keys stay untouched',
+      '  DEEPSEEK_API_KEY: sk-abc',
+      '  KIMI_CODING_API_KEY: sk-kimi',
+      'records:',
+      '  client-connection/browser-session:',
+      '    kind: secret',
+      '',
+    ].join('\n'),
+  );
+  // idempotent, and an existing value is never overwritten
+  const again = mergeCredentialYaml(r.text, PROVIDER_API_KEY_ENV, PROVIDER_PLACEHOLDER_KEY);
+  assert.equal(again.created, false);
+  assert.equal(again.text, r.text);
+  const userValue = r.text.replace(PROVIDER_PLACEHOLDER_KEY, 'user-supplied');
+  const kept = mergeCredentialYaml(userValue, PROVIDER_API_KEY_ENV, PROVIDER_PLACEHOLDER_KEY);
+  assert.equal(kept.created, false);
+  assert.ok(kept.text.includes('user-supplied'));
+});
+
+test('mergeCredentialYaml adds refs to a records-only document and refuses unknown layouts', () => {
+  const recordsOnly = 'version: 1\nrecords:\n  a/b:\n    kind: secret\n';
+  const r = mergeCredentialYaml(recordsOnly, PROVIDER_API_KEY_ENV, PROVIDER_PLACEHOLDER_KEY);
+  assert.ok(r.ok);
+  assert.equal(r.text, `version: 1\nrefs:\n  ${PROVIDER_API_KEY_ENV}: ${PROVIDER_PLACEHOLDER_KEY}\nrecords:\n  a/b:\n    kind: secret\n`);
+
+  // A document we cannot prove we understand is refused, never rewritten.
+  const flat = 'DEEPSEEK_API_KEY: sk-abc\n';
+  assert.equal(mergeCredentialYaml(flat, PROVIDER_API_KEY_ENV, PROVIDER_PLACEHOLDER_KEY).ok, false);
+  const v2 = 'version: 2\nrefs:\n  A: b\n';
+  assert.equal(mergeCredentialYaml(v2, PROVIDER_API_KEY_ENV, PROVIDER_PLACEHOLDER_KEY).ok, false);
 });
