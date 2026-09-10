@@ -1,7 +1,7 @@
 {
   "name": "dsh-gemini-oauth-bridge",
   "description": "Bridge Google AI subscription (Antigravity/Gemini OAuth, Code Assist API) into DeepSeek Harness as an OpenAI-compatible model endpoint",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -41,11 +41,15 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-settings"
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale"
       ]
     },
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
+  },
+  "scripts": {
+    "test": "node --test"
   }
 }
