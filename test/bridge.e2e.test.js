@@ -265,7 +265,10 @@ test('refresh-models syncs llm-pi-ai.providers.gemini-oauth into settings.yaml',
 
   const settingsPath = join(fakeHome, '.dsh', 'settings.yaml');
   const text = readFileSync(settingsPath, 'utf8');
-  assert.match(text, new RegExp('llm-pi-ai:\\n  providers:\\n    gemini-oauth:\\n      api: openai-completions\\n      baseURL: http://127\\.0\\.0\\.1:' + port + '/gemini-oauth-bridge/v1\\n      apiKeyEnv: GEMINI_OAUTH_API_KEY\\n      models:\\n        - id: gemini-3\\.1-pro-high\\n        - id: claude-opus-4-6-thinking\\n$'));
+  assert.match(text, new RegExp('llm-pi-ai:\\n  providers:\\n    gemini-oauth:\\n      displayName: Google Gemini'));
+  assert.match(text, new RegExp('baseURL: http://127\\.0\\.0\\.1:' + port + '/gemini-oauth-bridge/v1'));
+  assert.match(text, new RegExp('- id: gemini-3\\.1-pro-high'));
+  assert.match(text, new RegExp('- id: claude-opus-4-6-thinking'));
   assert.ok(!text.includes('chat_20706'));
   assert.ok(!text.includes('tab_flash_lite_preview'));
 
@@ -275,7 +278,9 @@ test('refresh-models syncs llm-pi-ai.providers.gemini-oauth into settings.yaml',
   assert.deepEqual(body.provider.credential, { ok: true, created: true });
   const credPath = join(fakeHome, '.dsh', '.credentials.yaml');
   assert.equal(readFileSync(credPath, 'utf8'), 'version: 1\nrefs:\n  GEMINI_OAUTH_API_KEY: dsh-gemini-oauth-bridge\n');
-  assert.equal(statSync(credPath).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(credPath).mode & 0o777, 0o600);
+  }
 
   // second sync is byte-identical (idempotent) for both documents
   const before = text;

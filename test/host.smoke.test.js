@@ -57,7 +57,7 @@ async function call(port, method, path, body) {
   return { status: res.status, text, json, headers: res.headers };
 }
 
-test('ping, status and default model list respond without login', async () => {
+test('ping and status respond without login, model list is empty until login', async () => {
   const host = await bootHost();
   try {
     const ping = await call(host.port, 'GET', '/api/ping');
@@ -67,14 +67,14 @@ test('ping, status and default model list respond without login', async () => {
     const status = await call(host.port, 'GET', '/api/status');
     assert.equal(status.status, 200);
     assert.equal(status.json.loggedIn, false);
-    assert.equal(status.json.modelSource, 'default');
+    assert.equal(status.json.modelSource, 'none');
+    assert.deepEqual(status.json.models, []);
     assert.match(status.json.version, /^\d+\.\d+\.\d+$/);
 
     const models = await call(host.port, 'GET', '/v1/models');
     assert.equal(models.status, 200);
     assert.equal(models.json.object, 'list');
-    assert.ok(Array.isArray(models.json.data) && models.json.data.length > 0);
-    assert.equal(models.json.data[0].object, 'model');
+    assert.deepEqual(models.json.data, []);
   } finally {
     host.server.close();
   }

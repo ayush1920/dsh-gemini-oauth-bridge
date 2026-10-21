@@ -511,7 +511,7 @@ test('mergeProviderYaml appends a fresh llm-pi-ai block to an unrelated file', (
   const before = 'model: glm-5.3-flash\nagent-default-model:\n  provider: zai-coding-cn\n';
   const r = mergeProviderYaml(before, 'gemini-oauth', BODY6);
   assert.ok(r.ok);
-  assert.match(r.text, /\nllm-pi-ai:\n  providers:\n    gemini-oauth:\n      api: openai-completions\n/);
+  assert.match(r.text, /\nllm-pi-ai:\n  providers:\n    gemini-oauth:\n      displayName: Google Gemini\n/);
   assert.match(r.text, /agent-default-model:\n  provider: zai-coding-cn\n/);
   assert.ok(r.text.endsWith('\n'));
   // idempotent
@@ -536,7 +536,9 @@ test('mergeProviderYaml inserts the provider without touching sibling providers'
   const r = mergeProviderYaml(before, 'gemini-oauth', BODY6);
   assert.ok(r.ok);
   const out = r.text.split('\n');
-  assert.match(r.text, /    gemini-oauth:\n      api: openai-completions\n      baseURL: http:\/\/127\.0\.0\.1:3080\/gemini-oauth-bridge\/v1\n      apiKeyEnv: GEMINI_OAUTH_API_KEY\n      models:\n        - id: gemini-3\.1-pro-high\n        - id: claude-opus-4-6-thinking\n/);
+  assert.match(r.text, /    gemini-oauth:\n      displayName: Google Gemini\n/);
+  assert.match(r.text, /      baseURL: http:\/\/127\.0\.0\.1:3080\/gemini-oauth-bridge\/v1\n/);
+  assert.match(r.text, /        - id: gemini-3\.1-pro-high\n/);
   // siblings preserved verbatim and in order
   const kimi = out.indexOf('    kimi-coding:');
   const zai = out.indexOf('    zai-coding-cn:');
@@ -585,11 +587,80 @@ test('mergeProviderYaml creates providers under an existing llm-pi-ai and refuse
 
 // ---------- .credentials.yaml placeholder key ----------
 
-import { mergeCredentialYaml, PROVIDER_API_KEY_ENV, PROVIDER_PLACEHOLDER_KEY } from '../lib/protocol.js';
+import {
+  mergeCredentialYaml,
+  mergeCordisPatchYaml,
+  friendlyModelName,
+  parseModelIdsFromPatch,
+  PROVIDER_API_KEY_ENV,
+  PROVIDER_PLACEHOLDER_KEY,
+} from '../lib/protocol.js';
 
-test('buildProviderYamlLines always declares the credential reference', () => {
-  const lines = buildProviderYamlLines('127.0.0.1:3080', ['m'], 2);
-  assert.deepEqual(lines, ['  api: openai-completions', '  baseURL: http://127.0.0.1:3080/gemini-oauth-bridge/v1', '  apiKeyEnv: GEMINI_OAUTH_API_KEY', '  models:', '    - id: m']);
+test('friendlyModelName provides human readable model names', () => {
+  assert.equal(friendlyModelName('gemini-3.8-flash-high'), 'Gemini 3.8 Flash (High)');
+  assert.equal(friendlyModelName('gemini-2.5-pro'), 'Gemini 2.5 Pro');
+  assert.equal(friendlyModelName('claude-sonnet-4-6'), 'Claude Sonnet 4.6 (Bridged)');
+  assert.equal(friendlyModelName('custom-model-id'), 'Custom Model Id');
+  assert.equal(friendlyModelName('gemini-3.5-flash-low'), 'Gemini 3.5 Flash (Low)');
+  assert.equal(friendlyModelName('gemini-3.8-flash-tiered'), 'Gemini 3.8 Flash (Tiered)');
+});
+
+test('parseModelIdsFromPatch extracts configured model IDs from cordis patch yaml', () => {
+  const yaml = [
+    '- id: llm-pi-ai',
+    '  config:',
+    '    providers:',
+    '      gemini-oauth:',
+    '        models:',
+    '          - id: custom-model-1',
+    '          - id: "custom-model-2"',
+  ].join('\n');
+  assert.deepEqual(parseModelIdsFromPatch(yaml, 'gemini-oauth'), ['custom-model-1', 'custom-model-2']);
+});
+
+test('buildProviderYamlLines declares credential reference, display name and model limits', () => {
+  const lines = buildProviderYamlLines('127.0.0.1:3080', ['gemini-3.8-flash-high'], 2);
+  assert.deepEqual(lines, [
+    '  displayName: Google Gemini',
+    '  api: openai-completions',
+    '  baseURL: http://127.0.0.1:3080/gemini-oauth-bridge/v1',
+    '  apiKeyEnv: GEMINI_OAUTH_API_KEY',
+    '  defaultContextWindow: 1048576',
+    '  defaultMaxTokens: 8192',
+    '  models:',
+    '    - id: gemini-3.8-flash-high',
+    '      name: "Gemini 3.8 Flash (High)"',
+  ]);
+});
+
+test('mergeCordisPatchYaml creates entry from empty file', () => {
+  const r = mergeCordisPatchYaml('', 'gemini-oauth', ['        displayName: Google Gemini']);
+  assert.ok(r.ok);
+  assert.match(r.text, /- id: llm-pi-ai\n/);
+  assert.match(r.text, /  name: "@deepseek-ai\/dsh-llm-pi-ai"\n/);
+  assert.match(r.text, /      gemini-oauth:\n        displayName: Google Gemini\n/);
+});
+
+test('mergeCordisPatchYaml updates existing entry in place', () => {
+  const before = [
+    '# patch',
+    '- id: ui-settings',
+    '  name: ui',
+    '- id: llm-pi-ai',
+    '  name: "@deepseek-ai/dsh-llm-pi-ai"',
+    '  config:',
+    '    providers:',
+    '      gemini-oauth:',
+    '        old: config',
+    '- id: other',
+    '  name: other',
+    '',
+  ].join('\n');
+  const r = mergeCordisPatchYaml(before, 'gemini-oauth', ['        displayName: Google Gemini']);
+  assert.ok(r.ok);
+  assert.ok(!r.text.includes('old: config'));
+  assert.ok(r.text.includes('- id: other'));
+  assert.match(r.text, /      gemini-oauth:\n        displayName: Google Gemini\n- id: other/);
 });
 
 test('mergeCredentialYaml creates a version-1 document from nothing', () => {
