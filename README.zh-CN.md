@@ -71,7 +71,7 @@ llm-pi-ai:
 - **连接指纹**：不发送 `Connection: close`，复用 keep-alive 连接。
 - **限流退避**：429 时读取 `Retry-After` 头或响应内 `retryDelay`，进入按模型冷却（上限 30 分钟），冷却期内不发出上游请求。
 - **订阅 tier 识别**：请求权益按 `paidTier.id` 解析（Google AI Pro → `g1-pro-tier`），`currentTier` 显示 free-tier 只是注册态，不影响实际配额与模型访问。
-- **provider 自动配置**：登录成功和「刷新模型列表」时，自动把 `llm-pi-ai.providers.gemini-oauth`（含最新模型 ID 和 `GEMINI_OAUTH_API_KEY` 凭据引用）外科手术式合并进 `~/.dsh/settings.yaml`——其他配置字节保持不变，首次修改前自动备份为 `settings.yaml.bak-gemini-oauth-bridge`。同时在 `~/.dsh/.credentials.yaml` 里补上占位 key（只追加，不覆盖；无法确认结构的 version-1 文档一律不动并如实报错）。`chat_*`/`tab_*` 内部 ID 会被过滤。重启 DSH 后生效；在 state 文件中设 `"providerSync": false` 可关闭自动写入。
+- **provider 自动配置**：登录成功和「刷新模型列表」时，自动把 `llm-pi-ai.providers.gemini-oauth`（含显示名称、人类可读模型名称、容量上限与 `GEMINI_OAUTH_API_KEY` 凭据引用）外科手术式合并进 modern profile patches (`cordis.patch.yml`) 与 `~/.dsh/settings.yaml`——其他配置字节保持不变，首次修改前自动备份为 `settings.yaml.bak-gemini-oauth-bridge`。同时在 `~/.dsh/.credentials.yaml` 里补上占位 key（只追加，不覆盖；无法确认结构的 version-1 文档一律不动并如实报错）。`chat_*`/`tab_*` 以及不可用 ID 会被过滤。热更新或重启 DSH 后生效；在 state 文件中设 `"providerSync": false` 可关闭自动写入。
 - **公开客户端凭据**：OAuth client 凭据是 Antigravity 应用内嵌的公开值（CLIProxyAPI 开源库同样原样公开），仓库中以 base64 形式存放——只为避免 GitHub push protection 的扫描噪声，运行时解码。
 
 ## 局限
